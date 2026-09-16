@@ -1,70 +1,92 @@
-# Racing Simulator Controller
+# Arduino Joystick Controller & Mouse Steering
 
-A custom racing simulator controller that combines mouse steering with an Arduino-based throttle/brake pedal system using the joystick module.
+A DIY experiment in turning cheap hardware into a game controller: **steer with the mouse** and use an **Arduino joystick module as throttle and brake**. Both inputs are merged into a single virtual gamepad through the **vJoy** driver, so any game that supports controllers can use it (tested with *F1 24*).
 
-## Features
+It is not meant to replace a real wheel or gamepad. It was built to explore serial communication with an Arduino, virtual HID devices on Windows, and how to make raw mouse input feel like a steering wheel (smoothing and self-centering).
 
-- Mouse-based steering with customizable settings
-- Arduino-powered throttle and brake control using joystick module
-- Graphical interface for adjusting steering parameters
-- Smooth steering with pushback and center-return mechanics
-- Real-time control adjustments
-- Compatible with vJoy virtual controller
+## How it works
 
-## Components Required
+```
+HW-504 joystick ──analog──▶ Arduino ──serial (0-1023)──┐
+                                                      ├──▶ sim_controller.py ──▶ vJoy device ──▶ game
+Mouse position ───────────────────────────────────────┘        (Tkinter GUI for live tuning)
+```
 
-- Arduino board (with analog input capability)
-- Joystick module for throttle/brake
-- vJoy installed and configured (one controller with X, Z, RZ axis enabled)
+| vJoy axis | Input | Mapping |
+|---|---|---|
+| **X** | Mouse horizontal position | Screen center = wheel center, scaled by sensitivity |
+| **Z** | Joystick pushed forward | Throttle, 0 to 100% |
+| **RZ** | Joystick pulled back | Brake, 0 to 100% |
 
-## Software Requirements
+- **Smoothing**: while the mouse moves, the wheel eases toward the mouse position instead of jumping to it.
+- **Pushback**: when the mouse stops, the wheel gradually returns to center, like a real wheel's self-centering force.
+- **Deadzone**: small joystick movements around its rest position are ignored so neither pedal is pressed by accident.
+- The script always uses the **newest** Arduino reading and discards older queued ones, so the pedals never lag behind.
 
-- Python 3.x
-- vJoy
-- Required Python packages:
-  - pyserial
-  - pyvjoy
-  - pyautogui
-  - tkinter (usually comes with Python)
+## Hardware
 
-## Installation
+- Any Arduino with an analog input (Uno, Nano, ...)
+- HW-504 (or similar) analog joystick module
 
-1. Install vJoy driver on your Windows system
-2. Connect the Arduino and upload the `joystick_throttle.ino` sketch (default port is COM6)
-3. Install required Python packages:
-```bash
-pip install pyserial pyvjoy pyautogui
-```	
-4. Configure the Arduino COM port in Sim_controller.py (default is COM6)
+| Joystick pin | Arduino pin |
+|---|---|
+| VRy | A1 |
+| +5V | 5V |
+| GND | GND |
 
+## Setup (Windows)
 
-## Usage
-1. Run the Python controller script:
-```bash
-python Sim_controller.py
- ```
+1. **Install [vJoy](https://github.com/jshafer817/vJoy/releases)**, open *Configure vJoy* and enable device 1 with the **X**, **Z** and **Rz** axes.
+2. **Flash the Arduino** with [`arduino/joystick_throttle/joystick_throttle.ino`](arduino/joystick_throttle/joystick_throttle.ino) using the Arduino IDE, and note its COM port.
+3. **Install the Python dependencies** (Python 3.8+):
+   ```bash
+   pip install -r requirements.txt
+   ```
+4. **Run the controller** with your Arduino's port:
+   ```bash
+   python sim_controller.py --port COM6
+   ```
+5. **Bind the axes in your game**: steering to X, throttle to Z and brake to Rz.
 
-2. The GUI will appear with three adjustable settings:
-   
-   - Steering Sensitivity: Adjusts how much the mouse movement affects steering
-   - Pushback Strength: Controls how strongly the wheel returns to center
-   - Smoothing: Adjusts the smoothness of steering movements
+Options: `--port` (default `COM6`), `--baud` (default `9600`), `--device` vJoy device id (default `1`).
 
+## Tuning
 
-3. Use your mouse for steering and the Arduino-connected potentiometer for throttle/brake control after configuring in game controls (tested with F1 24)
+A small settings window opens with three live sliders:
 
+| Slider | Effect |
+|---|---|
+| Steering Sensitivity | How much of the screen width maps to a full wheel turn |
+| Pushback Strength | How fast the wheel re-centers when the mouse stops |
+| Smoothing | How quickly the wheel follows the mouse |
 
-## Controls
-- Steering : Move your mouse left/right
-- Throttle : Move potentiometer forward from center
-- Brake : Move potentiometer backward from center
-- Settings : Adjust in real-time using the GUI sliders
-## Project Structure
-- Sim_controller.py : Main Python script for the controller
-- joystick_throttle.ino : Arduino code for throttle/brake input
-- vJoyInterface.dll : Required vJoy interface library
+Closing the window stops the controller and resets all axes to neutral.
 
+## Alternative: AutoHotkey steering script
+
+[`ahk/mouse_steering.ahk`](ahk/mouse_steering.ahk) is a lightweight, steering-only version written in **AutoHotkey v2**. It maps the mouse position straight to the vJoy X axis, without smoothing, pushback or the Arduino.
+
+It calls the vJoy driver directly, so copy `vJoyInterface.dll` from the vJoy install folder (e.g. `C:\Program Files\vJoy\x64\`) next to the script before running it.
+
+## Project structure
+
+```
+├── sim_controller.py                           # Main app: mouse + Arduino -> vJoy, with tuning GUI
+├── arduino/joystick_throttle/joystick_throttle.ino   # Arduino sketch streaming the joystick axis
+├── ahk/mouse_steering.ahk                      # Minimal AutoHotkey v2 steering alternative
+└── requirements.txt
+```
+
+## Troubleshooting
+
+- **"Failed to initialize vJoy device"**: vJoy is not installed, or device 1 is not enabled in *Configure vJoy*.
+- **"Failed to connect to Arduino"**: wrong `--port`, or the port is busy (close the Arduino IDE Serial Monitor).
+- **Throttle or brake engaged at rest**: your joystick's rest value may differ from 517. Check it in the Serial Monitor and adjust `JOYSTICK_REST`, `THROTTLE_ZONE_START` and `BRAKE_ZONE_END` in `sim_controller.py`.
 
 ## Acknowledgments
-- vJoy project for the virtual joystick driver
-- Arduino community for hardware interfacing resources
+
+- [vJoy](https://github.com/jshafer817/vJoy) virtual joystick driver and [pyvjoy](https://github.com/tidzo/pyvjoy)
+
+## License
+
+[MIT](LICENSE)
